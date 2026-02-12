@@ -11,7 +11,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import com.jormy.nin.NINLib.onChangeAppOrTextbox
@@ -47,12 +46,6 @@ class SoftKeyboard : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         keyboard = this
-        window.window?.addFlags(
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-        )
-
     }
 
     override fun onUpdateSelection(
@@ -181,7 +174,7 @@ class SoftKeyboard : InputMethodService() {
             val isNormalMovement = start == end && !fromStart && !signal
 
             var finalSelectionStart = 0
-            var finalSelectionEnd = 0
+            var finalSelectionEnd: Int
 
             val isAfterRetype = selectStart == 5000 && selectEnd == 5000 && !fromStart && !signal
             if (isAfterRetype) {
@@ -269,12 +262,11 @@ class SoftKeyboard : InputMethodService() {
         ) {
             var backIndexBytes = rawBackIndex
 
-            var candidateBeforeSelection = 0
             // For some reason it only skips the candidate if the selection is at the end of the candidate
             if (lazyString.selection.max == lazyString.candidate.max) {
                 val candidate = lazyString.getCandidate()
                 if (candidate != null) {
-                    candidateBeforeSelection = candidate.substring(0, min(candidate.length, lazyString.selection.min - lazyString.candidate.min)).toByteArray().size
+                    val candidateBeforeSelection = candidate.substring(0, min(candidate.length, lazyString.selection.min - lazyString.candidate.min)).toByteArray().size
                     if (candidateBeforeSelection > 0) {
                         backIndexBytes += candidateBeforeSelection
                     }

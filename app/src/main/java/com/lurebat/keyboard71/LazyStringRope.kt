@@ -283,8 +283,7 @@ class LazyStringRope(override var selection: SimpleCursor, override var candidat
     }
 
     override fun getGraphemesAtIndex(startIndex: Int, isBackwards: Boolean, isWord: Boolean, count: Int): Int {
-        var charsToGet = count
-        charsToGet = 100
+        var charsToGet = maxOf(count, 100)
         if (isBackwards) {
             charsToGet *= -1
         }

@@ -134,9 +134,8 @@ class NINActivity : ComponentActivity() {
                         ) {
                             Button(
                                 onClick = {
-                                    this@NINActivity.startActivityForResult(
-                                        Intent("android.settings.INPUT_METHOD_SETTINGS"),
-                                        0
+                                    this@NINActivity.startActivity(
+                                        Intent("android.settings.INPUT_METHOD_SETTINGS")
                                     )
                                 },
                                 modifier = Modifier

@@ -9,7 +9,10 @@ import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
+import android.media.AudioAttributes;
 import android.media.SoundPool;
+import android.os.Build;
+import android.os.VibrationEffect;
 import android.net.Uri;
 import android.os.Vibrator;
 
@@ -25,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 
 @Api
+@SuppressWarnings("deprecation")
 public class Utils {
     private static AssetManager leassetmanager;
     private static ContextWrapper wra_global;
@@ -75,10 +79,15 @@ public class Utils {
     }
 
     @Api
+    @SuppressWarnings("deprecation")
     public static void vibrate(int millisecs) {
         Vibrator v = (Vibrator) con().getSystemService(Context.VIBRATOR_SERVICE);
         if (v != null) {
-            v.vibrate(millisecs);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createOneShot(millisecs, VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                v.vibrate(millisecs);
+            }
         }
     }
 
@@ -127,8 +136,15 @@ public class Utils {
     @Api
     public static void initRoenSoundPool() {
         if (sp == null) {
-            sp = new SoundPool(10, 3, 0);
-            soundeffect_map = new HashMap();
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            sp = new SoundPool.Builder()
+                    .setAudioAttributes(attributes)
+                    .setMaxStreams(10)
+                    .build();
+            soundeffect_map = new HashMap<>();
         }
     }
 
@@ -144,7 +160,7 @@ public class Utils {
             } catch (IOException e) {
                 prin("Cannot load the sound : " + soundname);
             }
-            Integer theid2 = new Integer(realid);
+            Integer theid2 = Integer.valueOf(realid);
             soundeffect_map.put(soundname, theid2);
             return theid2;
         }
