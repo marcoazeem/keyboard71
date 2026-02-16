@@ -34,7 +34,7 @@ import com.alorma.compose.settings.ui.SettingsCheckbox
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import com.lurebat.keyboard71.BuildConfig;
+import com.lurebat.keyboard71.BuildConfig
 
 @Composable
 fun ComposeSettingsTheme(
@@ -125,6 +125,39 @@ class NINActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodyMedium,
                                     textAlign = TextAlign.Center
                                 )
+                            }
+                        }
+
+                        if (BuildConfig.STUB_NATIVE_ENGINE) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 12.dp)
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.tertiary,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(16.dp)
+                                ) {
+                                    Text(
+                                        "MIGRATION MODE",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        "Using temporary 64-bit fallback keyboard.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        "Native NIN rendering/features are being rebuilt.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
 

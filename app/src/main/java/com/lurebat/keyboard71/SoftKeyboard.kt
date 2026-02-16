@@ -7,16 +7,26 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import com.jormy.nin.NINLib.onChangeAppOrTextbox
 import com.jormy.nin.NINLib.onExternalSelChange
 import com.jormy.nin.NINLib.onTextSelection
+import com.jormy.nin.NINLib.onTouchEvent as nativeOnTouchEvent
 import com.jormy.nin.NINLib.onWordDestruction
+import com.jormy.nin.NINLib.init as nativeInit
 import com.lurebat.keyboard71.BuildConfig
 import com.lurebat.keyboard71.tasker.triggerBasicTaskerEvent
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -42,6 +52,8 @@ class SoftKeyboard : InputMethodService() {
     private var afterRetypeCounter = 0
 
     private var selectionMode = false
+    private var fallbackKeyboardView: View? = null
+    private var hybridKeyboardView: View? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -79,6 +91,17 @@ class SoftKeyboard : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        if (BuildConfig.STUB_NATIVE_ENGINE) {
+            val existing = fallbackKeyboardView
+            if (existing != null) {
+                (existing.parent as ViewGroup?)?.removeView(existing)
+                return existing
+            }
+            val created = createFallbackKeyboardView()
+            fallbackKeyboardView = created
+            return created
+        }
+
         val view = ninView
         if (view == null) {
             ninView = NINView(this)
@@ -86,7 +109,302 @@ class SoftKeyboard : InputMethodService() {
             (view.parent as ViewGroup?)?.removeView(view)
         }
 
+        if (BuildConfig.NATIVE_ASSIST_KEYS) {
+            val existingHybrid = hybridKeyboardView
+            if (existingHybrid != null) {
+                (existingHybrid.parent as ViewGroup?)?.removeView(existingHybrid)
+                return existingHybrid
+            }
+            val hybrid = createHybridKeyboardView(ninView!!)
+            hybridKeyboardView = hybrid
+            return hybrid
+        }
+
         return ninView!!
+    }
+
+    private fun createHybridKeyboardView(nativeView: View): View {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+        }
+
+        // Stack native renderer above assist keys so both are usable during migration.
+        (nativeView.parent as? ViewGroup)?.removeView(nativeView)
+        root.addView(
+            nativeView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        root.addView(
+            createAssistKeyboardView(),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        return root
+    }
+
+    private fun createFallbackKeyboardView(): View {
+        val pad = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            8f,
+            resources.displayMetrics
+        ).toInt()
+        val keyGap = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            4f,
+            resources.displayMetrics
+        ).toInt()
+        val keyHeight = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            52f,
+            resources.displayMetrics
+        ).toInt()
+        val keyCornerRadius = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            12f,
+            resources.displayMetrics
+        )
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+            setBackgroundColor(Color.parseColor("#141A23"))
+        }
+
+        val banner = TextView(this).apply {
+            text = "Keyboard 71 • migration mode"
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#E6B656"))
+            textSize = 14f
+            setPadding(pad, pad / 2, pad, pad)
+        }
+        root.addView(banner)
+
+        fun keyBackground(): GradientDrawable {
+            return GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = keyCornerRadius
+                setColor(Color.parseColor("#2B3341"))
+                setStroke(1, Color.parseColor("#3A4558"))
+            }
+        }
+
+        fun createKey(label: String, weight: Float): Button {
+            return Button(this).apply {
+                text = label
+                isAllCaps = false
+                textSize = if (label.length <= 2) 22f else 18f
+                setTextColor(Color.WHITE)
+                background = keyBackground()
+                minHeight = keyHeight
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    weight
+                ).apply {
+                    setMargins(keyGap, keyGap, keyGap, keyGap)
+                }
+
+                if (label == "BKSP") {
+                    var downX = 0f
+                    var lastStep = 0
+                    var wordDeleted = false
+                    val charStepPx = TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP,
+                        8f,
+                        resources.displayMetrics
+                    )
+                    val wordThresholdPx = TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP,
+                        56f,
+                        resources.displayMetrics
+                    )
+
+                    setOnTouchListener { _, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                downX = event.x
+                                lastStep = 0
+                                wordDeleted = false
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                val dx = downX - event.x
+                                val ic = currentInputConnection
+
+                                if (!wordDeleted && dx >= wordThresholdPx && ic != null) {
+                                    if (!deleteWordBeforeCursor(ic)) {
+                                        ic.deleteSurroundingText(1, 0)
+                                    }
+                                    wordDeleted = true
+                                    return@setOnTouchListener true
+                                }
+
+                                if (!wordDeleted && dx >= charStepPx && ic != null) {
+                                    val step = (dx / charStepPx).toInt()
+                                    val toDelete = step - lastStep
+                                    if (toDelete > 0) {
+                                        repeat(toDelete) { ic.deleteSurroundingText(1, 0) }
+                                        lastStep = step
+                                    }
+                                    return@setOnTouchListener true
+                                }
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                if (!wordDeleted && lastStep == 0) {
+                                    onFallbackKeyPress(label)
+                                }
+                            }
+                            MotionEvent.ACTION_CANCEL -> {
+                                wordDeleted = false
+                                lastStep = 0
+                            }
+                        }
+                        true
+                    }
+                } else {
+                    setOnClickListener { onFallbackKeyPress(label) }
+                }
+            }
+        }
+
+        fun addSpacer(row: LinearLayout, weight: Float) {
+            row.addView(
+                View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 0, weight)
+                }
+            )
+        }
+
+        fun addRow(keys: List<Pair<String, Float>>, leftSpacer: Float = 0f, rightSpacer: Float = 0f) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            if (leftSpacer > 0f) addSpacer(row, leftSpacer)
+            for ((key, weight) in keys) {
+                row.addView(createKey(key, weight))
+            }
+            if (rightSpacer > 0f) addSpacer(row, rightSpacer)
+            root.addView(row)
+        }
+
+        addRow(listOf("q","w","e","r","t","y","u","i","o","p").map { it to 1f })
+        addRow(listOf("a","s","d","f","g","h","j","k","l").map { it to 1f }, leftSpacer = 0.4f, rightSpacer = 0.4f)
+        addRow(listOf("z","x","c","v","b","n","m",",",".").map { it to 1f }, leftSpacer = 0.9f, rightSpacer = 0.9f)
+        addRow(
+            listOf(
+                "BKSP" to 1.4f,
+                "UNDO" to 1.4f,
+                "SPACE" to 3.6f,
+                "ENTER" to 1.6f
+            )
+        )
+        return root
+    }
+
+    private fun createAssistKeyboardView(): View {
+        val assist = createFallbackKeyboardView()
+        (assist as? LinearLayout)?.let { layout ->
+            if (layout.childCount > 0 && layout.getChildAt(0) is TextView) {
+                (layout.getChildAt(0) as TextView).text = "Assist Keys (Native migration)"
+            }
+            for (i in 0 until layout.childCount) {
+                val child = layout.getChildAt(i)
+                child.setOnTouchListener { touchedView, event ->
+                    relayNativeTouchFromAssist(layout, event)
+                    false
+                }
+            }
+        }
+        return assist
+    }
+
+    private fun relayNativeTouchFromAssist(root: View, event: MotionEvent) {
+        val action = NINView.actionToJormyAction(event.actionMasked)
+        if (action == -1) {
+            return
+        }
+
+        val rootLocation = IntArray(2)
+        root.getLocationOnScreen(rootLocation)
+        val x = event.rawX - rootLocation[0]
+        val y = event.rawY - rootLocation[1]
+
+        val width = maxOf(root.width, 1)
+        val height = maxOf(root.height, 1)
+        nativeInit(width, height, width, height)
+        nativeOnTouchEvent(
+            0,
+            action,
+            x,
+            y,
+            event.pressure,
+            event.size,
+            System.currentTimeMillis()
+        )
+    }
+
+    private fun onFallbackKeyPress(key: String) {
+        val ic = currentInputConnection ?: return
+        when (key) {
+            "BKSP" -> ic.deleteSurroundingText(1, 0)
+            "UNDO" -> sendCtrlZ(ic)
+            "SPACE" -> ic.commitText(" ", 1)
+            "ENTER" -> ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)).also {
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            }
+            else -> ic.commitText(key, 1)
+        }
+    }
+
+    private fun sendCtrlZ(ic: InputConnection) {
+        val now = SystemClock.uptimeMillis()
+        ic.sendKeyEvent(
+            KeyEvent(
+                now,
+                now,
+                KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_Z,
+                0,
+                KeyEvent.META_CTRL_ON
+            )
+        )
+        ic.sendKeyEvent(
+            KeyEvent(
+                now,
+                SystemClock.uptimeMillis(),
+                KeyEvent.ACTION_UP,
+                KeyEvent.KEYCODE_Z,
+                0,
+                KeyEvent.META_CTRL_ON
+            )
+        )
+    }
+
+    private fun deleteWordBeforeCursor(ic: InputConnection): Boolean {
+        val before = ic.getTextBeforeCursor(128, 0) ?: return false
+        if (before.isEmpty()) return false
+
+        val trimmedTrailing = before.trimEnd()
+        val trailingWhitespace = before.length - trimmedTrailing.length
+        val core = trimmedTrailing
+        val word = core.takeLastWhile { !it.isWhitespace() }
+        val toDelete = trailingWhitespace + word.length
+        if (toDelete <= 0) return false
+
+        ic.deleteSurroundingText(toDelete, 0)
+        return true
     }
 
     override fun onStartInputView(attribute: EditorInfo, restarting: Boolean) {

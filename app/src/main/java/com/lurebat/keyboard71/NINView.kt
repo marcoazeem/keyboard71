@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.GestureDetector.SimpleOnGestureListener
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.View.MeasureSpec
 import com.jormy.nin.EXSurfaceView
 import com.jormy.nin.NINLib.init
 import com.jormy.nin.NINLib.onTouchEvent
@@ -225,8 +226,23 @@ class NINView(context: Context) : EXSurfaceView(context) {
     // android.view.SurfaceView, android.view.View
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val metrics = resources.displayMetrics
-        val wwww = (metrics.widthPixels + 2).toFloat()
+        val measuredWidth = MeasureSpec.getSize(widthMeasureSpec)
+        val measuredHeight = MeasureSpec.getSize(heightMeasureSpec)
+        val widthMode = MeasureSpec.getMode(widthMeasureSpec)
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+        val wwww = (if (measuredWidth > 0) measuredWidth else metrics.widthPixels).toFloat()
         val height = (metrics.heightPixels + 2).toFloat()
+
+        // In hybrid migration mode this view is embedded as a fixed-height strip.
+        // Respect exact constraints instead of forcing full-screen GL dimensions.
+        if (widthMode == MeasureSpec.EXACTLY && heightMode == MeasureSpec.EXACTLY && measuredHeight > 0) {
+            xViewScaling = 1.0f
+            yViewScaling = 1.0f
+            holder?.setFixedSize(maxOf(1, measuredWidth), maxOf(1, measuredHeight))
+            setMeasuredDimension(measuredWidth, measuredHeight)
+            return
+        }
+
         tracedims(
             "::::::::onMeasure called --------------- : ",
             widthMeasureSpec.toFloat(),

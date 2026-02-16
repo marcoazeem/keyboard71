@@ -16,8 +16,10 @@ android {
         targetSdkVersion 33
         versionCode 602
         versionName "71.5.0"
+        buildConfigField "boolean", "STUB_NATIVE_ENGINE", "false"
+        buildConfigField "boolean", "NATIVE_ASSIST_KEYS", "false"
         ndk {
-            abiFilters "armeabi"
+            abiFilters "armeabi-v7a"
         }
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

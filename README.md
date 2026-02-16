@@ -2,6 +2,14 @@
 
 Android custom keyboard app (IME) with a native OpenGL core.
 
+## Current status
+
+1. Original NIN engine behavior depends on legacy `libgl2jni.so`.
+2. 64-bit migration is active with an experimental arm64 native renderer.
+3. Full fallback mode exists and is currently disabled (`BuildConfig.STUB_NATIVE_ENGINE=false`).
+4. Hybrid assist keys are enabled in native mode (`BuildConfig.NATIVE_ASSIST_KEYS=true`) so typing remains possible during migration.
+5. Native NIN features are being rebuilt incrementally.
+
 ## Local setup
 
 1. Install Android Studio and SDK platform 33.
@@ -26,7 +34,7 @@ Android custom keyboard app (IME) with a native OpenGL core.
 2. `NINLib.java`: app-to-native JNI API.
 3. `@Api` methods: native-callback surface. Do not change signatures.
 4. `NINView.kt`: rendering + touch relay.
-5. `SoftKeyboard.kt`: IME lifecycle, text operations, selection/composition.
+5. `SoftKeyboard.kt`: IME lifecycle, text operations, selection/composition, fallback keyboard UI.
 
 ## Contribution notes
 
